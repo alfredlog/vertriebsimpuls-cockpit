@@ -9,4 +9,13 @@ wheels/
 # Virtual environments
 .venv
 
+# Secrets
+secrets/
+.env
+
+#Os File
 .DS_Store
+
+# Local database
+*.duckdb.wal
+*.duckdb
