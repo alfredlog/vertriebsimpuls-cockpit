@@ -14,10 +14,10 @@ jobs:
 
     steps:
       - name: Retrieve the code
-        uses: actions/checkout@vv7
+        uses: actions/checkout@v7.0.1
 
       - name: Installer uv
-        uses: astral-sh/setup-uv@v10
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
 
