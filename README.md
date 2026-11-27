@@ -11,7 +11,7 @@ Morgen je Betreuer eine priorisierte Liste von **Vertriebsimpulsen** (Kunde → 
 Score). Geschäftsregeln erklären, *warum jetzt*; ein Empfehlungsmodell schlägt vor, *welches Produkt*.
 Jede Begründung nennt die konkreten Fakten (Datum, Betrag, Basispunkte).
 
-**Demo:** _Link folgt_
+**Live-Demo:** [cockpit.a-fed.org](https://cockpit.a-fed.org) (fiktive Daten, Stichtag 20.11.2026)
 
 ## Screenshots
 
