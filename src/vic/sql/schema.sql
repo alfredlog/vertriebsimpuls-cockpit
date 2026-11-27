@@ -99,3 +99,8 @@ CREATE TABLE IF NOT EXISTS vic.fact_positions(
     FOREIGN KEY (product_id)
         REFERENCES vic.dim_product(product_id)
 );
+
+-- Holds the reference date of the current run, so views never depend on CURRENT_DATE.
+CREATE TABLE IF NOT EXISTS vic.run_context (
+    as_of DATE NOT NULL
+);

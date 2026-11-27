@@ -88,6 +88,16 @@ def _dim_date_for_trades(trades: pd.DataFrame, as_of: date) -> pd.DataFrame:
     return build_dim_date(start, end)
 
 
+def read_view_sql() -> list[str]:
+    """Return the SQL of every feature view, sorted by file name."""
+    views_dir = importlib.resources.files("vic.sql").joinpath("views")
+    view_files = sorted(
+        (f for f in views_dir.iterdir() if f.name.endswith(".sql")),
+        key=lambda f: f.name,
+    )
+    return [f.read_text() for f in view_files]
+
+
 def _insert_frame(
     con: duckdb.DuckDBPyConnection, table: str, frame: pd.DataFrame
 ) -> None:
@@ -123,6 +133,9 @@ def load_all(
     try:
         con.execute("DROP SCHEMA IF EXISTS vic CASCADE;")
         con.execute(schema_sql)
+        for view_sql in read_view_sql():
+            con.execute(view_sql)
+        con.execute("INSERT INTO vic.run_context (as_of) VALUES (?)", [as_of])
         for table in TABLE_LOAD_ORDER:
             _insert_frame(con, table, frames[table])
         con.commit()
