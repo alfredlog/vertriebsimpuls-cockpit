@@ -113,3 +113,17 @@ CREATE TABLE IF NOT EXISTS vic.market_rates (
     rate_pct DECIMAL(8,4) NOT NULL,
     PRIMARY KEY (rate_date, tenor_years)
 );
+
+-- One row per model, ground truth and k for every evaluation run (monitoring).
+CREATE TABLE IF NOT EXISTS vic.reco_eval_runs (
+    run_ts TIMESTAMP NOT NULL,
+    as_of DATE NOT NULL,
+    model VARCHAR NOT NULL,
+    ground_truth VARCHAR NOT NULL CHECK (ground_truth IN ('new', 'all')),
+    k INTEGER NOT NULL,
+    n_clients INTEGER NOT NULL,
+    precision_at_k DOUBLE NOT NULL,
+    recall_at_k DOUBLE NOT NULL,
+    ndcg_at_k DOUBLE NOT NULL,
+    coverage DOUBLE NOT NULL
+);

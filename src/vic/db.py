@@ -32,6 +32,9 @@ TABLE_TO_DATA_KEY = {
     "fact_positions": "positions",
 }
 
+# Tables with history that a reload must keep (they are not regenerated).
+PRESERVED_TABLES = ("reco_eval_runs",)
+
 
 def get_connection(path: str | Path = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB connection; creates the parent folder for file databases.
@@ -99,7 +102,7 @@ def read_view_sql() -> list[str]:
     return [f.read_text() for f in view_files]
 
 
-def _insert_frame(
+def insert_frame(
     con: duckdb.DuckDBPyConnection, table: str, frame: pd.DataFrame
 ) -> None:
     """Insert a DataFrame into vic.<table>, matching columns by name."""
@@ -108,6 +111,23 @@ def _insert_frame(
         con.execute(f"INSERT INTO vic.{table} BY NAME SELECT * FROM df")
     finally:
         con.unregister("df")
+
+
+def _read_preserved_tables(con: duckdb.DuckDBPyConnection) -> dict[str, pd.DataFrame]:
+    """Return the current rows of every preserved table that already exists."""
+    preserved = {}
+    for table in PRESERVED_TABLES:
+        exists = con.execute(
+            """
+            SELECT count(*) FROM information_schema.tables
+            WHERE table_catalog = current_database()
+                AND table_schema = 'vic' AND table_name = ?
+            """,
+            [table],
+        ).fetchone()[0]
+        if exists:
+            preserved[table] = con.execute(f"SELECT * FROM vic.{table}").df()
+    return preserved
 
 
 def load_all(
@@ -124,6 +144,9 @@ def load_all(
     a failed load rolls back to the previous data instead of an empty schema.
     market_rates is optional and passed in (not fetched here) so the network
     call never runs inside the transaction; without it the table stays empty.
+    PRESERVED_TABLES (history such as evaluation runs) are copied out and back
+    inside the same transaction, so a reload keeps them and a failed reload
+    rolls them back together with the data.
     """
     expected_keys = set(TABLE_TO_DATA_KEY.values())
     missing = expected_keys - set(data)
@@ -137,15 +160,19 @@ def load_all(
 
     con.begin()
     try:
+        preserved = _read_preserved_tables(con)
         con.execute("DROP SCHEMA IF EXISTS vic CASCADE;")
         con.execute(schema_sql)
         for view_sql in read_view_sql():
             con.execute(view_sql)
         con.execute("INSERT INTO vic.run_context (as_of) VALUES (?)", [as_of])
         for table in TABLE_LOAD_ORDER:
-            _insert_frame(con, table, frames[table])
+            insert_frame(con, table, frames[table])
         if market_rates is not None:
-            _insert_frame(con, "market_rates", market_rates)
+            insert_frame(con, "market_rates", market_rates)
+        for table, rows in preserved.items():
+            if not rows.empty:
+                insert_frame(con, table, rows)
         con.commit()
     except Exception:
         con.rollback()

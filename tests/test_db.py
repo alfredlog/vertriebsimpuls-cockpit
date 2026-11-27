@@ -198,3 +198,53 @@ def test_build_database_writes_file_named_like_schema(tmp_path, monkeypatch):
         assert rate_count.fetchone() == (2,)
     assert counts["dim_product"] == 16
     assert counts["fact_trades"] > 0
+
+
+INSERT_EVAL_RUN = """
+INSERT INTO vic.reco_eval_runs VALUES
+    (TIMESTAMP '2026-11-20 06:00:00', DATE '2026-11-20', 'baseline', 'new', 3, 72,
+     0.25, 0.64, 0.51, 1.0)
+"""
+
+
+def eval_runs(con: duckdb.DuckDBPyConnection) -> list[tuple]:
+    return con.execute("SELECT * FROM vic.reco_eval_runs ORDER BY ALL").fetchall()
+
+
+def test_reload_keeps_eval_run_history(con):
+    load_all(con, small_data(), AS_OF)
+    con.execute(INSERT_EVAL_RUN)
+    before = eval_runs(con)
+
+    load_all(con, small_data(), AS_OF)
+    load_all(con, small_data(), AS_OF)
+
+    assert eval_runs(con) == before
+    assert len(before) == 1
+
+
+def test_failed_reload_keeps_eval_run_history(con):
+    load_all(con, small_data(), AS_OF)
+    con.execute(INSERT_EVAL_RUN)
+    before = eval_runs(con)
+
+    bad = small_data()
+    bad["clients"].loc[0, "segment"] = "retail"
+    with pytest.raises(duckdb.Error):
+        load_all(con, bad, AS_OF)
+
+    assert eval_runs(con) == before
+
+
+def test_file_rebuild_keeps_eval_run_history(tmp_path, monkeypatch):
+    """The file database is attached under its own catalog name; history must survive."""
+    monkeypatch.setattr("vic.db.fetch_rates", lambda as_of: None)
+    path = tmp_path / "vic.duckdb"
+    build_database(path, seed=1)
+    with get_connection(path) as file_con:
+        file_con.execute(INSERT_EVAL_RUN)
+
+    build_database(path, seed=1)
+
+    with get_connection(path) as file_con:
+        assert len(eval_runs(file_con)) == 1
