@@ -1498,6 +1498,7 @@ name = "vertriebsimpuls-cockpit"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "certifi" },
     { name = "dash" },
     { name = "duckdb" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -1519,6 +1520,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "certifi", specifier = ">=2026.11.20" },
     { name = "dash", specifier = ">=4.5.1" },
     { name = "duckdb", specifier = ">=2.0.1" },
     { name = "numpy", specifier = ">=2.4.6" },

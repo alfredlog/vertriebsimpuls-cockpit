@@ -101,10 +101,30 @@ def view_data() -> dict[str, pd.DataFrame]:
     }
 
 
+# 10Y: as_of - 14 = 2026-06-16 and as_of - 1 month = 2026-05-30 (a Saturday,
+# so the Friday 2026-05-29 is used). 2Y has no history before as_of - 14.
+MARKET_RATES = (
+    ("2026-05-28", 10, 2.4000),
+    ("2026-05-29", 10, 2.5000),
+    ("2026-06-16", 10, 2.6000),
+    ("2026-06-17", 10, 2.7000),
+    ("2026-06-30", 10, 2.7500),
+    ("2026-07-01", 10, 3.0000),  # after as_of, ignored
+    ("2026-06-29", 2, 2.0000),
+    ("2026-06-30", 2, 1.9000),
+)
+
+
+def market_rates() -> pd.DataFrame:
+    rates = pd.DataFrame(MARKET_RATES, columns=["rate_date", "tenor_years", "rate_pct"])
+    rates["rate_date"] = pd.to_datetime(rates["rate_date"]).dt.date
+    return rates
+
+
 @pytest.fixture(scope="module")
 def con():
     connection = get_connection(":memory:")
-    load_all(connection, view_data(), AS_OF)
+    load_all(connection, view_data(), AS_OF, market_rates())
     yield connection
     connection.close()
 
@@ -175,3 +195,26 @@ def test_asset_class_shares_sum_to_one(con):
         "SELECT sum(share) FROM vic.v_client_asset_class_mix GROUP BY client_id"
     ).fetchall()
     assert [s for (s,) in sums] == pytest.approx([1.0, 1.0])
+
+
+def test_rate_changes_in_basis_points(con):
+    rows = con.execute(
+        """
+        SELECT tenor_years, rate_date, rate_pct, rate_14d_ago_pct, change_14d_bp,
+               rate_1m_ago_pct, change_1m_bp
+        FROM vic.v_rate_changes
+        ORDER BY tenor_years
+        """
+    ).fetchall()
+    assert rows == [
+        (Decimal("2.00"), AS_OF, Decimal("1.9000"), None, None, None, None),
+        (
+            Decimal("10.00"),
+            AS_OF,
+            Decimal("2.7500"),
+            Decimal("2.6000"),
+            Decimal("15.0000"),
+            Decimal("2.5000"),
+            Decimal("25.0000"),
+        ),
+    ]

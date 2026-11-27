@@ -8,6 +8,7 @@ import duckdb
 import pandas as pd
 
 from vic.data.generate import AS_OF_DEFAULT, generate_all
+from vic.market.fetch_rates import fetch_rates
 
 DEFAULT_DB_PATH = Path("data/vic.duckdb")
 DEFAULT_SEED = 42
@@ -110,7 +111,10 @@ def _insert_frame(
 
 
 def load_all(
-    con: duckdb.DuckDBPyConnection, data: dict[str, pd.DataFrame], as_of: date
+    con: duckdb.DuckDBPyConnection,
+    data: dict[str, pd.DataFrame],
+    as_of: date,
+    market_rates: pd.DataFrame | None = None,
 ) -> None:
     """Replace the whole vic schema with the given data in one transaction.
 
@@ -118,6 +122,8 @@ def load_all(
     same transaction, so a reload drops the schema (CASCADE), recreates it from
     schema.sql and inserts everything. Doing all of it in one transaction means
     a failed load rolls back to the previous data instead of an empty schema.
+    market_rates is optional and passed in (not fetched here) so the network
+    call never runs inside the transaction; without it the table stays empty.
     """
     expected_keys = set(TABLE_TO_DATA_KEY.values())
     missing = expected_keys - set(data)
@@ -138,6 +144,8 @@ def load_all(
         con.execute("INSERT INTO vic.run_context (as_of) VALUES (?)", [as_of])
         for table in TABLE_LOAD_ORDER:
             _insert_frame(con, table, frames[table])
+        if market_rates is not None:
+            _insert_frame(con, "market_rates", market_rates)
         con.commit()
     except Exception:
         con.rollback()
@@ -149,10 +157,11 @@ def build_database(
     seed: int = DEFAULT_SEED,
     as_of: date = AS_OF_DEFAULT,
 ) -> None:
-    """Generate the synthetic dataset and load it into the database at path."""
+    """Generate the synthetic dataset, fetch market rates and load both."""
     data = generate_all(seed=seed, as_of=as_of)
+    market_rates = fetch_rates(as_of)
     with get_connection(path) as con:
-        load_all(con, data, as_of)
+        load_all(con, data, as_of, market_rates)
 
 
 if __name__ == "__main__":

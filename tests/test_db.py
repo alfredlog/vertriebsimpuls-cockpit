@@ -178,13 +178,23 @@ def test_generated_data_loads_completely(con):
         assert counts[table] == len(data[key])
 
 
-def test_build_database_writes_file_named_like_schema(tmp_path):
+def test_build_database_writes_file_named_like_schema(tmp_path, monkeypatch):
     """A file called vic.duckdb must not clash with the schema vic, also on rebuild."""
+    rates = pd.DataFrame(
+        {
+            "rate_date": [AS_OF_DEFAULT, AS_OF_DEFAULT],
+            "tenor_years": [2, 10],
+            "rate_pct": [2.1, 2.7],
+        }
+    )
+    monkeypatch.setattr("vic.db.fetch_rates", lambda as_of: rates)
     path = tmp_path / "sub" / "vic.duckdb"
     build_database(path, seed=1)
     build_database(path, seed=1)
 
     with get_connection(path) as file_con:
         counts = row_counts(file_con)
+        rate_count = file_con.execute("SELECT count(*) FROM vic.market_rates")
+        assert rate_count.fetchone() == (2,)
     assert counts["dim_product"] == 16
     assert counts["fact_trades"] > 0

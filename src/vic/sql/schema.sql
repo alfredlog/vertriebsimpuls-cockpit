@@ -104,3 +104,12 @@ CREATE TABLE IF NOT EXISTS vic.fact_positions(
 CREATE TABLE IF NOT EXISTS vic.run_context (
     as_of DATE NOT NULL
 );
+
+-- ECB AAA yield curve spot rates; no FK to dim_date because the rate
+-- history window differs from the trade history window.
+CREATE TABLE IF NOT EXISTS vic.market_rates (
+    rate_date DATE NOT NULL,
+    tenor_years DECIMAL(5,2) NOT NULL,
+    rate_pct DECIMAL(8,4) NOT NULL,
+    PRIMARY KEY (rate_date, tenor_years)
+);
