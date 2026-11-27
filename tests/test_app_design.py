@@ -1,7 +1,7 @@
 """Redesign checks: every page renders, shared template, formats, WCAG contrast."""
 
 import json
-from datetime import date, datetime
+from datetime import date
 
 import pandas as pd
 import plotly.io as pio
@@ -15,24 +15,14 @@ from app.charts import ACCENT, INK_MUTED, SIGNAL_COLORS, TEMPLATE_NAME
 from app.format import SIGNAL_LABELS, fmt_bp, fmt_date, fmt_eur, fmt_pct, fmt_rate
 from app.pages import kunde, markt, monitoring, tagesimpulse
 from vic.data.generate import AS_OF_DEFAULT
-from vic.db import get_connection
-from vic.market.fetch_rates import load_fallback
-from vic.pipeline.daily_run import run_daily
-from vic.reco.evaluate import run as run_evaluation
 
-RUN_TS = datetime(2026, 11, 20, 6, 0)
 WCAG_AA_TEXT = 4.5
 
 
-@pytest.fixture(scope="module")
-def con(tmp_path_factory):
-    connection = get_connection(":memory:")
-    run_daily(connection, AS_OF_DEFAULT, RUN_TS, market_rates=load_fallback())
-    run_evaluation(connection, RUN_TS, tmp_path_factory.mktemp("d") / "e.md")
-    data.set_connection(connection)
-    yield connection
-    data.set_connection(None)
-    connection.close()
+@pytest.fixture
+def con(app_db):
+    """The app's own connection to the pipeline-built test database."""
+    return app_db
 
 
 def render(component) -> str:

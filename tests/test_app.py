@@ -6,14 +6,10 @@ import pytest
 from plotly.utils import PlotlyJSONEncoder
 
 from app import app as dash_app
-from app import data
 from app.components import FOOTER_TEXT, NO_DATA_TEXT
 from app.pages import kunde, markt, monitoring, tagesimpulse
 from vic.data.generate import AS_OF_DEFAULT
 from vic.db import get_connection, record_feedback
-from vic.market.fetch_rates import load_fallback
-from vic.pipeline.daily_run import run_daily
-from vic.reco.evaluate import run as run_evaluation
 
 RUN_TS = datetime(2026, 11, 20, 6, 0)
 
@@ -25,16 +21,10 @@ def render(component) -> str:
     )
 
 
-@pytest.fixture(scope="module")
-def con(tmp_path_factory):
-    connection = get_connection(":memory:")
-    run_daily(connection, AS_OF_DEFAULT, RUN_TS, market_rates=load_fallback())
-    report = tmp_path_factory.mktemp("docs") / "evaluation.md"
-    run_evaluation(connection, RUN_TS, report)
-    data.set_connection(connection)
-    yield connection
-    data.set_connection(None)
-    connection.close()
+@pytest.fixture
+def con(app_db):
+    """The app's own connection to the pipeline-built test database."""
+    return app_db
 
 
 def test_app_registers_all_pages():
@@ -85,14 +75,9 @@ def test_monitoring_with_feedback_renders(con):
         con.execute("DELETE FROM vic_app.impulse_feedback")
 
 
-def test_empty_database_shows_hint():
-    empty = get_connection(":memory:")
-    data.set_connection(empty)
-    try:
-        assert NO_DATA_TEXT in render(tagesimpulse.layout())
-    finally:
-        data.set_connection(None)
-        empty.close()
+def test_empty_database_shows_hint(app_connection):
+    app_connection(get_connection(":memory:"))
+    assert NO_DATA_TEXT in render(tagesimpulse.layout())
 
 
 def test_filter_callback_returns_only_matching_rows(con):
@@ -104,7 +89,6 @@ def test_filter_callback_returns_only_matching_rows(con):
 
 
 def test_feedback_callback_writes_one_row(con):
-    data.set_connection(con)
     rows = tagesimpulse.table_rows(AS_OF_DEFAULT, None, None, None)
     target = rows[3]
     active_cell = {

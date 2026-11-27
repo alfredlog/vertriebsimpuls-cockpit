@@ -46,6 +46,13 @@ TOP_CLIENTS = 12
 # /kunde/suche is the client selection (the sidebar entry); it never clashes
 # with a client id, which always starts with "C".
 SEARCH_SLUG = "suche"
+REQUIRED_TABLES = (
+    "vic.dim_client",
+    "vic.fact_trades",
+    "vic.fact_positions",
+    "vic.run_context",
+    "vic_app.daily_impulses",
+)
 
 
 def client_picker(value: str | None = None) -> dcc.Dropdown:
@@ -348,6 +355,8 @@ def search_layout(message: str | None = None) -> html.Div:
 
 def layout(client_id: str | None = None, **_kwargs) -> html.Div:
     """Page layout for one client, or the client selection at /kunde/suche."""
+    if not data.has_tables(*REQUIRED_TABLES):
+        return card("Kunde 360°", empty_state(NO_DATA_TEXT))
     if client_id in (None, SEARCH_SLUG):
         return search_layout()
     client = data.client(client_id)

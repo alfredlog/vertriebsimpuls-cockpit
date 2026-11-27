@@ -6,12 +6,14 @@ from dash import dcc, html
 
 from app import data
 from app.charts import ACCENT, GRAPH_CONFIG, INK, REFERENCE, new_figure
-from app.components import card, chip, empty_state
+from app.components import NO_DATA_TEXT, card, chip, empty_state
 from app.format import NO_VALUE, fmt_bp, fmt_date, fmt_number, fmt_rate
 from app.icons import icon
 from vic.signals.rules import RATE_MOVE_TENORS, RATE_MOVE_THRESHOLD_BP
 
 dash.register_page(__name__, path="/markt", name="Markt-Monitor", title="Markt-Monitor")
+
+REQUIRED_TABLES = ("vic.market_rates", "vic.run_context")
 
 # Today carries the accent; the reference curve is muted and dashed.
 # label_shift keeps the two end labels apart when the curves almost touch.
@@ -110,6 +112,8 @@ def change_card(row) -> html.Div:
 
 def layout(**_kwargs) -> html.Div:
     """Page layout."""
+    if not data.has_tables(*REQUIRED_TABLES):
+        return card("Zinsstrukturkurve", empty_state(NO_DATA_TEXT))
     curves = data.yield_curves()
     changes = data.rate_changes()
     if curves.empty or changes.empty:

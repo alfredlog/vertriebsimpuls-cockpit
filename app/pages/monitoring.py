@@ -22,6 +22,11 @@ dash.register_page(__name__, path="/monitoring", name="Monitoring", title="Monit
 # Daily list excludes known products, so "new products" @5 is the matching metric.
 EVAL_GROUND_TRUTH = "new"
 EVAL_K = 5
+# Each card checks its own tables: after a failed first run, the quality
+# results exist while schema vic does not, and they must still be shown.
+FEEDBACK_TABLES = ("vic_app.impulse_feedback", "vic_app.daily_impulses")
+EVAL_TABLE = "vic.reco_eval_runs"
+QUALITY_TABLE = "vic_app.quality_results"
 
 
 def _line(fig, x, y, name: str, color: str, hover: str) -> None:
@@ -37,8 +42,10 @@ def _line(fig, x, y, name: str, color: str, hover: str) -> None:
 
 
 def acceptance_card() -> html.Section:
-    rates = data.acceptance_by_week()
     title = "Annahmequote je Signaltyp und Woche"
+    if not data.has_tables(*FEEDBACK_TABLES):
+        return card(title, empty_state("Noch kein Feedback erfasst."))
+    rates = data.acceptance_by_week()
     if rates.empty:
         return card(title, empty_state("Noch kein Feedback erfasst."))
 
@@ -90,9 +97,10 @@ def acceptance_card() -> html.Section:
 
 
 def reco_card() -> html.Section:
-    runs = data.reco_eval_runs(EVAL_GROUND_TRUTH, EVAL_K)
     title = "Empfehlungsmodelle je Evaluationslauf"
-    if runs.empty:
+    no_runs = not data.has_tables(EVAL_TABLE)
+    runs = None if no_runs else data.reco_eval_runs(EVAL_GROUND_TRUTH, EVAL_K)
+    if runs is None or runs.empty:
         return card(
             title,
             empty_state(
@@ -179,8 +187,10 @@ def _check_item(check: str, passed: bool, failures: int) -> html.Li:
 
 
 def quality_card() -> html.Section:
-    results = data.latest_quality_results()
     title = "Datenqualitätsprüfungen (letzter Lauf)"
+    if not data.has_tables(QUALITY_TABLE):
+        return card(title, empty_state("Noch keine Qualitätsprüfung gelaufen."))
+    results = data.latest_quality_results()
     if results.empty:
         return card(title, empty_state("Noch keine Qualitätsprüfung gelaufen."))
 

@@ -3,6 +3,11 @@
 Dash serves requests from several threads, but a DuckDB connection must not be
 used concurrently. One shared connection behind a lock is simple and safe for
 a single-user demo.
+
+Which database is used is decided at call time, never at import time:
+an explicit connection from set_connection() wins (tests: in-memory states),
+otherwise the file at $VIC_DB_PATH (default data/vic.duckdb). File connections
+are cached per path; reset_connection() drops the override and closes them.
 """
 
 import os
@@ -18,21 +23,46 @@ from vic.db import DEFAULT_DB_PATH, get_connection, query_df, record_feedback
 DB_PATH_ENV = "VIC_DB_PATH"
 
 _lock = threading.Lock()
-_connection: duckdb.DuckDBPyConnection | None = None
+_override: duckdb.DuckDBPyConnection | None = None
+_file_connections: dict[Path, duckdb.DuckDBPyConnection] = {}
+
+
+def db_path() -> Path:
+    """Return the database file the app uses, read from the environment now."""
+    return Path(os.environ.get(DB_PATH_ENV, DEFAULT_DB_PATH))
 
 
 def set_connection(con: duckdb.DuckDBPyConnection | None) -> None:
-    """Use the given connection (tests pass an in-memory database)."""
-    global _connection
+    """Use the given connection instead of the file; None removes the override."""
+    global _override
     with _lock:
-        _connection = con
+        _override = con
+
+
+def reset_connection() -> None:
+    """Drop the override and close every cached file connection."""
+    global _override
+    with _lock:
+        _override = None
+        for con in _file_connections.values():
+            con.close()
+        _file_connections.clear()
 
 
 def _con() -> duckdb.DuckDBPyConnection:
-    global _connection
-    if _connection is None:
-        _connection = get_connection(Path(os.environ.get(DB_PATH_ENV, DEFAULT_DB_PATH)))
-    return _connection
+    """Current connection; caller must hold _lock."""
+    if _override is not None:
+        return _override
+    path = db_path().resolve()
+    if path not in _file_connections:
+        _file_connections[path] = get_connection(path)
+    return _file_connections[path]
+
+
+def connection() -> duckdb.DuckDBPyConnection:
+    """Return the connection the app currently uses (tests query through it)."""
+    with _lock:
+        return _con()
 
 
 def _query(sql: str, params: list | dict | None = None) -> pd.DataFrame:
@@ -40,16 +70,25 @@ def _query(sql: str, params: list | dict | None = None) -> pd.DataFrame:
         return query_df(_con(), sql, params)
 
 
+def has_tables(*qualified_names: str) -> bool:
+    """True if every given 'schema.table' exists (fresh clone: none do).
+
+    Pages call this before querying, so a database that the daily run has not
+    built yet shows a hint instead of an error.
+    """
+    existing = _query(
+        """
+        SELECT table_schema || '.' || table_name AS name
+        FROM information_schema.tables
+        WHERE table_catalog = current_database()
+        """
+    )["name"]
+    return set(qualified_names) <= set(existing)
+
+
 def has_impulses() -> bool:
     """True if the daily pipeline has written impulses at least once."""
-    exists = _query(
-        """
-        SELECT count(*) AS n FROM information_schema.tables
-        WHERE table_catalog = current_database()
-            AND table_schema = 'vic_app' AND table_name = 'daily_impulses'
-        """
-    )["n"].iloc[0]
-    if not exists:
+    if not has_tables("vic_app.daily_impulses"):
         return False
     return bool(_query("SELECT count(*) AS n FROM vic_app.daily_impulses")["n"].iloc[0])
 
