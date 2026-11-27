@@ -4,6 +4,8 @@ Spacing scale: 4 px steps; cards p-4, gaps 4 (16 px). Text: slate-900 body,
 slate-500 secondary (4.8:1 on white). One accent: teal-700.
 """
 
+from html import escape
+
 from dash import dash_table, html
 
 from app.charts import INK_MUTED, SIGNAL_COLORS, STATUS_BAD, STATUS_GOOD
@@ -159,7 +161,7 @@ def signal_chip(signal_type: str) -> html.Span:
 def signal_chip_markdown(signal_type: str) -> str:
     """The same chip as HTML for DataTable markdown cells."""
     dot, text_color, background = SIGNAL_COLORS[signal_type]
-    label = SIGNAL_LABELS.get(signal_type, signal_type)
+    label = escape(SIGNAL_LABELS.get(signal_type, signal_type))
     return (
         f'<span style="display:inline-flex;align-items:center;gap:6px;'
         f"padding:1px 8px;border-radius:9999px;font-size:12px;font-weight:500;"

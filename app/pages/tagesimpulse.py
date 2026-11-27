@@ -2,6 +2,7 @@
 
 from datetime import UTC, date, datetime
 from html import escape
+from urllib.parse import quote
 
 import dash
 import pandas as pd
@@ -126,6 +127,16 @@ TABLE_EXTRA_CSS = [
 ]
 
 
+def _markdown_text(value: object) -> str:
+    """Escape a DB value for a markdown cell that also renders raw HTML.
+
+    The table runs with markdown html=True (chips, line breaks), so every
+    value from the database is HTML-escaped and markdown link brackets are
+    neutralised; otherwise a client name could inject script (stored XSS).
+    """
+    return escape(str(value)).replace("[", "&#91;").replace("]", "&#93;")
+
+
 def table_rows(
     run_date: date, rep: str | None, segment: str | None, signal: str | None
 ):
@@ -138,8 +149,10 @@ def table_rows(
             "rep_name": row.rep_name,
             # Betreuer as a muted second line saves a column at 1280 px.
             "client": (
-                f"[{row.client_name}](/kunde/{row.client_id})<br>"
-                f'<span style="color:#64748b;font-size:12px">{row.rep_name}</span>'
+                f"[{_markdown_text(row.client_name)}]"
+                f"(/kunde/{quote(str(row.client_id))})<br>"
+                f'<span style="color:#64748b;font-size:12px">'
+                f"{escape(str(row.rep_name))}</span>"
             ),
             "client_name": row.client_name,
             "product_name": row.product_name or NO_VALUE,

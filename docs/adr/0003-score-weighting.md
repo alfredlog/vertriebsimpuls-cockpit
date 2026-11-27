@@ -38,6 +38,9 @@ W_RULE = 0.7, W_RECO = 0.3, AGREEMENT_BONUS = 0.1, TOP_N = 10 per sales rep
   latest evaluation run (`vic.reco_eval_runs`), because the daily list excludes
   products the client already trades. Without an evaluation run the segment
   popularity baseline is used.
+- Recommender candidates pass the same suitability rules as the signals before
+  ranking (product risk level vs. client risk profile; rates hedges only with
+  floating-rate debt), so a recommendation can never bypass them.
 
 ## Why rules weigh more
 

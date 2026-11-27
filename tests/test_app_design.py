@@ -3,6 +3,7 @@
 import json
 from datetime import date, datetime
 
+import pandas as pd
 import plotly.io as pio
 import pytest
 from dash import dcc
@@ -167,3 +168,34 @@ def test_text_colors_meet_wcag_aa():
         assert contrast(text, background) >= WCAG_AA_TEXT, signal_type
     assert contrast(INK_MUTED, "#ffffff") >= WCAG_AA_TEXT
     assert contrast(ACCENT, "#ffffff") >= WCAG_AA_TEXT
+
+
+def test_table_rows_escape_html_from_the_database(monkeypatch):
+    """The table renders markdown with html=True; DB values must not inject HTML."""
+    malicious = pd.DataFrame(
+        [
+            {
+                "impulse_id": "2026-11-20|C1|P1",
+                "rank": 1,
+                "rep_name": "<script>alert(1)</script>",
+                "client_id": "C1",
+                "client_name": "Evil <img src=x onerror=alert(1)> [link](javascript:x)",
+                "product_name": "<b>P</b>",
+                "signal_type": "maturity",
+                "score": 0.9,
+                "reason_de": "<i>Grund</i>",
+                "status": None,
+            }
+        ]
+    )
+    monkeypatch.setattr(data, "impulses", lambda *args: malicious)
+
+    row = tagesimpulse.table_rows(AS_OF_DEFAULT, None, None, None)[0]
+    rendered = row["client"] + row["impulse"] + row["signal_chip"]
+
+    assert "<script>" not in rendered
+    assert "<img" not in rendered
+    assert "<i>" not in rendered
+    assert "](javascript:" not in rendered
+    assert "&lt;script&gt;" in row["client"]
+    assert row["client"].count("](/kunde/") == 1
