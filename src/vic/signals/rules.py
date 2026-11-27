@@ -48,19 +48,28 @@ CONCENTRATION_MIN_SEGMENT_PENETRATION = 0.20
 # Highest product risk level (1-5) a client may be offered per risk profile.
 MAX_RISK_LEVEL = {"conservative": 2, "balanced": 3, "dynamic": 5}
 
-# Hedging products are exempt: a hedge lowers the client's risk, so its
-# condition is an exposure to hedge (checked by rate_move), not risk appetite.
+# Hedges skip the risk-profile check (a hedge lowers the client's risk); their
+# condition is an exposure to hedge instead. Rates hedges need floating-rate
+# debt. FX hedges stay allowed: the data has no FX exposure to check against.
+HEDGE_ASSET_CLASS_NEEDING_FLOATING_DEBT = "rates_derivative"
+
 SUITABLE_PRODUCTS_CTE = """
 suitable_products AS (
     SELECT c.client_id, p.product_id
     FROM vic.dim_client AS c
     CROSS JOIN vic.dim_product AS p
-    WHERE p.is_hedging_product
-        OR p.risk_level <= CASE c.risk_profile
+    WHERE (
+        p.is_hedging_product
+        AND (p.asset_class != $rates_hedge_class OR c.has_floating_rate_debt)
+    )
+    OR (
+        NOT p.is_hedging_product
+        AND p.risk_level <= CASE c.risk_profile
             WHEN 'conservative' THEN $max_risk_conservative
             WHEN 'balanced' THEN $max_risk_balanced
             WHEN 'dynamic' THEN $max_risk_dynamic
         END
+    )
 )
 """
 
@@ -123,9 +132,26 @@ def _check_run_context(con: duckdb.DuckDBPyConnection, as_of: date) -> None:
         raise ValueError(f"run_context holds {stored}, rules were called for {as_of}")
 
 
-def _suitability_params() -> dict[str, int]:
+def _suitability_params() -> dict[str, int | str]:
     """Return the named SQL parameters used by SUITABLE_PRODUCTS_CTE."""
-    return {f"max_risk_{profile}": level for profile, level in MAX_RISK_LEVEL.items()}
+    params: dict[str, int | str] = {
+        f"max_risk_{profile}": level for profile, level in MAX_RISK_LEVEL.items()
+    }
+    params["rates_hedge_class"] = HEDGE_ASSET_CLASS_NEEDING_FLOATING_DEBT
+    return params
+
+
+def suitable_products(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
+    """Return every (client_id, product_id) pair the client may be offered.
+
+    Shared with the pipeline so recommender candidates follow the same rules.
+    """
+    sql = (
+        "WITH"
+        + SUITABLE_PRODUCTS_CTE
+        + "SELECT client_id, product_id FROM suitable_products"
+    )
+    return query_df(con, sql, _suitability_params())
 
 
 def _to_frame(signals: list[dict]) -> pd.DataFrame:
@@ -243,7 +269,8 @@ RATE_MOVE_TEMPLATE = (
 def rate_move_rule(con: duckdb.DuckDBPyConnection, as_of: date) -> pd.DataFrame:
     """Big 5Y/10Y rate move: propose a hedge to clients with floating-rate debt.
 
-    No risk-profile filter: hedges are exempt (see SUITABLE_PRODUCTS_CTE).
+    No risk-profile filter: hedges are exempt (see SUITABLE_PRODUCTS_CTE), and
+    the floating-rate debt condition is applied here directly.
     """
     _check_run_context(con, as_of)
     move = query_df(

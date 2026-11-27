@@ -1,7 +1,7 @@
 """DuckDB access layer: the single entry point to the database."""
 
 import importlib.resources
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import duckdb
@@ -34,6 +34,8 @@ TABLE_TO_DATA_KEY = {
 
 # Tables with history that a reload must keep (they are not regenerated).
 PRESERVED_TABLES = ("reco_eval_runs",)
+
+FEEDBACK_STATUSES = ("angenommen", "abgelehnt")
 
 
 def get_connection(path: str | Path = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
@@ -103,14 +105,39 @@ def read_view_sql() -> list[str]:
 
 
 def insert_frame(
-    con: duckdb.DuckDBPyConnection, table: str, frame: pd.DataFrame
+    con: duckdb.DuckDBPyConnection,
+    table: str,
+    frame: pd.DataFrame,
+    schema: str = "vic",
 ) -> None:
-    """Insert a DataFrame into vic.<table>, matching columns by name."""
+    """Insert a DataFrame into <schema>.<table>, matching columns by name."""
     con.register("df", frame)
     try:
-        con.execute(f"INSERT INTO vic.{table} BY NAME SELECT * FROM df")
+        con.execute(f"INSERT INTO {schema}.{table} BY NAME SELECT * FROM df")
     finally:
         con.unregister("df")
+
+
+def ensure_app_schema(con: duckdb.DuckDBPyConnection) -> None:
+    """Create schema vic_app and its tables if missing; never drops anything."""
+    app_sql = importlib.resources.files("vic.sql").joinpath("app_schema.sql")
+    con.execute(app_sql.read_text())
+
+
+def record_feedback(
+    con: duckdb.DuckDBPyConnection,
+    impulse_id: str,
+    run_date: date,
+    status: str,
+    ts: datetime,
+) -> None:
+    """Store a sales rep's feedback ('angenommen' / 'abgelehnt') on an impulse."""
+    if status not in FEEDBACK_STATUSES:
+        raise ValueError(f"status must be one of {FEEDBACK_STATUSES}, got {status!r}")
+    con.execute(
+        "INSERT INTO vic_app.impulse_feedback VALUES (?, ?, ?, ?)",
+        [impulse_id, run_date, status, ts],
+    )
 
 
 def _read_preserved_tables(con: duckdb.DuckDBPyConnection) -> dict[str, pd.DataFrame]:
@@ -173,6 +200,7 @@ def load_all(
         for table, rows in preserved.items():
             if not rows.empty:
                 insert_frame(con, table, rows)
+        ensure_app_schema(con)
         con.commit()
     except Exception:
         con.rollback()

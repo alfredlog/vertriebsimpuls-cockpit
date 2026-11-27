@@ -21,6 +21,7 @@ from vic.signals.rules import (
     rate_move_rule,
     reactivation_rule,
     run_all_rules,
+    suitable_products,
 )
 
 AS_OF = date(2026, 6, 30)
@@ -432,3 +433,35 @@ def test_rate_move_hedge_is_offered_to_conservative_clients():
     )
     # Zinsswap 5J has risk level 3, but a hedge lowers the client's risk.
     assert rate_move_rule(con, AS_OF)["product_id"].tolist() == ["P008"]
+
+
+# --- hedge exposure ----------------------------------------------------------
+
+
+def test_rates_hedge_needs_floating_debt_fx_hedge_does_not():
+    con = load(
+        clients=[("C1", "corporate", False), ("C2", "corporate", True)],
+        risk_profiles={"C1": "conservative", "C2": "conservative"},
+    )
+    pairs = suitable_products(con)
+    allowed = pairs.groupby("client_id")["product_id"].agg(set).to_dict()
+
+    # P008-P010 rates hedges, P011 FX hedge, P016 equity ETF (risk level 4).
+    assert {"P008", "P009", "P010"}.isdisjoint(allowed["C1"])
+    assert {"P008", "P009", "P010"} <= allowed["C2"]
+    assert "P011" in allowed["C1"]
+    assert "P016" not in allowed["C1"] | allowed["C2"]
+
+
+def test_maturing_swap_is_renewed_only_with_floating_debt():
+    con = load(
+        clients=[("C1", "corporate", False), ("C2", "corporate", True)],
+        positions=[
+            ("C1", "P008", 5e6, "2021-07-10", "2026-07-10"),
+            ("C2", "P008", 5e6, "2021-07-10", "2026-07-10"),
+        ],
+    )
+    signals = maturity_rule(con, AS_OF)
+
+    # C1 has nothing left to hedge, so renewing the swap is no longer a topic.
+    assert signals[["client_id", "product_id"]].values.tolist() == [["C2", "P008"]]
