@@ -88,7 +88,7 @@ ASSET_CLASS_LABELS_DE = {
 # --- Formatting --------------------------------------------------------------
 
 
-def _format_eur_mio(value: float) -> str:
+def format_eur_mio(value: float) -> str:
     """Format an EUR amount in German style, e.g. 4500000 -> '4,5 Mio. EUR'."""
     english = f"{value / 1e6:,.1f}"
     german = english.replace(",", "_").replace(".", ",").replace("_", ".")
@@ -100,7 +100,7 @@ def format_fact(key: str, value: object) -> str:
     if key.endswith("_date"):
         return value.strftime("%d.%m.%Y")
     if key.endswith("_eur"):
-        return _format_eur_mio(value)
+        return format_eur_mio(value)
     if key.endswith("_bp"):
         return f"{value:+.0f} bp"
     if key.endswith("_pct"):

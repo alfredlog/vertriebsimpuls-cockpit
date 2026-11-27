@@ -82,7 +82,7 @@ def build_dim_date(start: date, end: date) -> pd.DataFrame:
     return dim_date
 
 
-def _dim_date_for_trades(trades: pd.DataFrame, as_of: date) -> pd.DataFrame:
+def dim_date_for_trades(trades: pd.DataFrame, as_of: date) -> pd.DataFrame:
     """Build dim_date covering every trade date and as_of."""
     trade_dates = pd.to_datetime(trades["trade_date"])
     if trade_dates.isna().any():
@@ -182,7 +182,7 @@ def load_all(
         raise ValueError(f"Missing keys: {missing}, unexpected keys: {unexpected}")
 
     frames = {table: data[key] for table, key in TABLE_TO_DATA_KEY.items()}
-    frames["dim_date"] = _dim_date_for_trades(data["trades"], as_of)
+    frames["dim_date"] = dim_date_for_trades(data["trades"], as_of)
     schema_sql = importlib.resources.files("vic.sql").joinpath("schema.sql").read_text()
 
     con.begin()

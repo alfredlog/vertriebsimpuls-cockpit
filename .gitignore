@@ -9,9 +9,12 @@ wheels/
 # Virtual environments
 .venv
 
-# Secrets
+# Secrets (BigQuery uses Application Default Credentials; never commit keys)
 secrets/
 .env
+*-key.json
+service-account*.json
+application_default_credentials.json
 
 #Os File
 .DS_Store

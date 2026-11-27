@@ -27,6 +27,9 @@ requires = ["uv_build>=0.13.9,<0.14.0"]
 build-backend = "uv_build"
 
 [dependency-groups]
+bigquery = [
+    "google-cloud-bigquery[pandas]>=3.47.0",
+]
 dev = [
     "pre-commit>=4.7.0",
     "pytest>=9.2.0",
@@ -40,12 +43,24 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["vic", "app"]
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The Dash app lives in app/ at the repository root, outside src/.
+pythonpath = ["."]
+# BigQuery tests need the optional "bigquery" group; run them with
+# uv run --group bigquery pytest -m bigquery
+addopts = "-m 'not bigquery'"
+markers = ["bigquery: needs the optional bigquery dependency group"]
 filterwarnings = [
     'ignore:^The hookimpl pytest_addhooks uses old-style configuration options:pytest.PytestRemovedIn10Warning:dash\.testing\.plugin',
+    # Known: Dash 4 deprecates the builtin DataTable (migration to dash-ag-grid is
+    # a separate decision); filtered by exact message, category and module only.
+    'ignore:\s*The dash_table.DataTable will be removed:DeprecationWarning:dash\.development\.base_component',
 ]
