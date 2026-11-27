@@ -83,7 +83,8 @@ def change_card(row) -> html.Div:
                 className="flex items-center justify-between",
                 children=[
                     html.Span(
-                        f"{fmt_number(row.tenor_years, 0)} Jahre",
+                        f"{fmt_number(row.tenor_years, 0)} "
+                        + ("Jahr" if int(row.tenor_years) == 1 else "Jahre"),
                         className="text-xs font-medium uppercase tracking-wide "
                         "text-slate-500",
                     ),

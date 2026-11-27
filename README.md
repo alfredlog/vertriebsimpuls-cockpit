@@ -15,11 +15,32 @@ Jede Begründung nennt die konkreten Fakten (Datum, Betrag, Basispunkte).
 
 ## Screenshots
 
-`docs/img/` ist noch leer; es gibt noch keine Screenshots. Erzeugen bei laufender App
-(siehe [Schnellstart](#schnellstart)), z. B. mit Chrome im Headless-Modus:
+Stand 20.11.2026, Demo-Datenbank mit vier Wochenläufen; das Feedback in den Bildern ist fiktiv.
+
+**Tagesimpulse:** Kennzahlen, priorisierte Impulse je Betreuer mit Begründung und Feedback-Knöpfen.
+
+![Tagesimpulse](docs/img/tagesimpulse.png)
+
+**Kunde 360°:** Stammdaten, heutige Impulse, Geschäftshistorie, Produktmix, Fälligkeiten ≤ 30 Tage hervorgehoben.
+
+![Kunde 360°](docs/img/kunde360.png)
+
+**Markt-Monitor:** AAA-Zinskurve der EZB heute und vor einem Monat, Veränderungen in Basispunkten.
+
+![Markt-Monitor](docs/img/markt.png)
+
+**Monitoring:** Annahmequote je Signaltyp, Modellgüte je Evaluationslauf, Datenqualität.
+
+![Monitoring](docs/img/monitoring.png)
+
+Neu erzeugen (baut eine eigene Demo-Datenbank in einem temporären Ordner, `data/` bleibt unberührt):
 
 ```bash
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars --window-size=1440,1500 --virtual-time-budget=10000 --screenshot=docs/img/tagesimpulse.png http://127.0.0.1:8050/
+uv run playwright install chromium
+```
+
+```bash
+uv run python scripts/take_screenshots.py
 ```
 
 ## Architektur
