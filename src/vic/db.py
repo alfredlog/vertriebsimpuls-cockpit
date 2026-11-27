@@ -1,6 +1,7 @@
 """DuckDB access layer: the single entry point to the database."""
 
 import importlib.resources
+import time
 from datetime import date, datetime
 from pathlib import Path
 
@@ -37,23 +38,40 @@ PRESERVED_TABLES = ("reco_eval_runs",)
 
 FEEDBACK_STATUSES = ("angenommen", "abgelehnt")
 
+# DuckDB lets only one process open a file at a time; another process gets an
+# IOException with this text until the holder closes its connection.
+LOCK_ERROR_TEXT = "Could not set lock"
+LOCK_RETRY_INTERVAL_S = 0.2
 
-def get_connection(path: str | Path = DEFAULT_DB_PATH) -> duckdb.DuckDBPyConnection:
+
+def get_connection(
+    path: str | Path = DEFAULT_DB_PATH, lock_timeout_s: float = 0.0
+) -> duckdb.DuckDBPyConnection:
     """Open a DuckDB connection; creates the parent folder for file databases.
 
     DuckDB names a file's catalog after the file, so "vic.duckdb" would clash
     with the schema "vic". Attaching under a fixed alias avoids that ambiguity.
+    lock_timeout_s > 0 waits that long while another process holds the file
+    (app and nightly pipeline share it), then re-raises the lock error.
     """
     if path == ":memory:":
         return duckdb.connect(path)
 
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect()
     escaped = str(path).replace("'", "''")
-    con.execute(f"ATTACH '{escaped}' AS {FILE_CATALOG}")
-    con.execute(f"USE {FILE_CATALOG}")
-    return con
+    deadline = time.monotonic() + lock_timeout_s
+    while True:
+        con = duckdb.connect()
+        try:
+            con.execute(f"ATTACH '{escaped}' AS {FILE_CATALOG}")
+            con.execute(f"USE {FILE_CATALOG}")
+            return con
+        except duckdb.IOException as error:
+            con.close()
+            if LOCK_ERROR_TEXT not in str(error) or time.monotonic() >= deadline:
+                raise
+        time.sleep(LOCK_RETRY_INTERVAL_S)
 
 
 def query_df(

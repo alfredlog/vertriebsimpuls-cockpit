@@ -18,3 +18,13 @@ app = Dash(
 )
 app.layout = build_shell(page_container)
 server = app.server
+
+
+@server.route("/healthz")
+def healthz() -> dict[str, str]:
+    """Liveness for Docker: the process answers HTTP.
+
+    Deliberately without a database query, so the nightly pipeline holding
+    the file lock does not mark the container unhealthy.
+    """
+    return {"status": "ok"}

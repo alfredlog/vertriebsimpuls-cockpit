@@ -1,3 +1,6 @@
+import subprocess
+import sys
+import time
 from datetime import date
 
 import duckdb
@@ -248,3 +251,56 @@ def test_file_rebuild_keeps_eval_run_history(tmp_path, monkeypatch):
 
     with get_connection(path) as file_con:
         assert len(eval_runs(file_con)) == 1
+
+
+# A second process holds the file like the app or the pipeline container would.
+HOLD_FILE_SCRIPT = """
+import sys, time, duckdb
+con = duckdb.connect()
+con.execute("ATTACH '" + sys.argv[1] + "' AS held")
+print("locked", flush=True)
+time.sleep(float(sys.argv[2]))
+"""
+
+
+def hold_file(path, seconds: float) -> subprocess.Popen:
+    """Start a process that locks path for the given time; return once locked."""
+    process = subprocess.Popen(
+        [sys.executable, "-c", HOLD_FILE_SCRIPT, str(path), str(seconds)],
+        stdout=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stdout.readline().strip() == "locked"
+    return process
+
+
+def test_locked_file_fails_without_timeout(tmp_path):
+    path = tmp_path / "vic.duckdb"
+    holder = hold_file(path, 30)
+    try:
+        with pytest.raises(duckdb.IOException, match="Could not set lock"):
+            get_connection(path)
+    finally:
+        holder.kill()
+        holder.wait()
+
+
+def test_connection_waits_until_the_other_process_releases(tmp_path):
+    path = tmp_path / "vic.duckdb"
+    holder = hold_file(path, 1)
+    start = time.monotonic()
+    con = get_connection(path, lock_timeout_s=20)
+    con.close()
+    holder.wait()
+    assert time.monotonic() - start > 0.5
+
+
+def test_lock_wait_gives_up_after_the_timeout(tmp_path):
+    path = tmp_path / "vic.duckdb"
+    holder = hold_file(path, 30)
+    try:
+        with pytest.raises(duckdb.IOException, match="Could not set lock"):
+            get_connection(path, lock_timeout_s=0.5)
+    finally:
+        holder.kill()
+        holder.wait()

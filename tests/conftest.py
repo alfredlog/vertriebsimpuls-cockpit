@@ -36,10 +36,10 @@ def forbid_default_database(monkeypatch, request):
     """
     forbidden = (request.config.rootpath / db.DEFAULT_DB_PATH).resolve()
 
-    def guarded(path=db.DEFAULT_DB_PATH):
+    def guarded(path=db.DEFAULT_DB_PATH, **kwargs):
         if str(path) != ":memory:" and Path(path).resolve() == forbidden:
             pytest.fail(f"Test opened the real database {forbidden}")
-        return _real_get_connection(path)
+        return _real_get_connection(path, **kwargs)
 
     for module in list(sys.modules.values()):
         if getattr(module, "get_connection", None) is _real_get_connection:
@@ -68,14 +68,17 @@ def app_db_path(tmp_path_factory) -> Path:
 def app_db(app_db_path, monkeypatch):
     """Point the app at the pipeline-built database; yield the app's connection.
 
-    Feedback is cleared first, so tests that click buttons stay independent.
+    The test and the app share one connection: DuckDB refuses a second attach
+    of the same file in one process. Feedback is cleared first, so tests that
+    click buttons stay independent.
     """
     monkeypatch.setenv(app_data.DB_PATH_ENV, str(app_db_path))
-    app_data.reset_connection()
-    con = app_data.connection()
+    con = _real_get_connection(app_db_path)
+    app_data.set_connection(con)
     con.execute("DELETE FROM vic_app.impulse_feedback")
     yield con
     app_data.reset_connection()
+    con.close()
 
 
 @pytest.fixture

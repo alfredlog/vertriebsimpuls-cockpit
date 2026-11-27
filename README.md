@@ -201,7 +201,8 @@ uv run pytest
 uv run pre-commit run --all-files
 ```
 
-**Docker:** noch nicht vorhanden (siehe Nächste Schritte).
+**Docker / VPS:** `docker compose up -d --build` (gunicorn, ein Worker); Anleitung mit Caddy und
+nächtlichem Job in [docs/deployment.md](docs/deployment.md).
 **BigQuery (optional):** [docs/bigquery.md](docs/bigquery.md).
 
 ## Grenzen
@@ -212,15 +213,15 @@ uv run pre-commit run --all-files
   spekulative Anlage. Devisenabsicherungen werden nicht auf ein Währungsrisiko geprüft (keine Daten).
 - **Risikoskala 1–5** statt PRIIPs-SRI 1–7.
 - **Vollständiges Neuladen** des Schemas `vic` bei jedem Lauf (keine inkrementellen Ladungen).
-- **Ein Benutzer:** eine DuckDB-Datei, ein schreibender Prozess; App und Tageslauf nicht gleichzeitig;
-  Feedback ohne Benutzerkennung.
+- **Ein Benutzer:** eine DuckDB-Datei, ein Prozess zur Zeit; App und Tageslauf warten kurz aufeinander
+  (kurzlebige Verbindungen); Feedback ohne Benutzerkennung.
 - **Tailwind über das Play-CDN:** braucht Internetzugang im Browser und ist laut Hersteller nur für
   Entwicklung gedacht.
 - Schwellenwerte und Gewichte sind von Hand gesetzt, nicht gelernt.
 
 ## Nächste Schritte
 
-- Dockerfile und Deployment-Beschreibung (`docs/deployment.md`), Tailwind beim Build erzeugen.
+- Tailwind beim Docker-Build erzeugen statt über das Play-CDN.
 - Gewichte und Schwellen aus dem Feedback lernen (Annahmequote je Signal).
 - Mehrbenutzerbetrieb: Server-Datenbank oder BigQuery, Anmeldung, Feedback je Betreuer.
 - Migration der Tabellen von `dash_table` (in Dash 4 abgekündigt) auf `dash-ag-grid`.

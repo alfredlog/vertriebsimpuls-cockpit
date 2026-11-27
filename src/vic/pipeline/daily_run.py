@@ -2,7 +2,7 @@
 
 The input data is checked before it is loaded, so a failed check leaves the
 previous day's database untouched. Impulses are checked again before they are
-written. CLI: uv run python -m vic.pipeline.daily_run --as-of 2026-11-20
+written. CLI: uv run python -m vic.pipeline.daily_run --as-of 2026-11-20 [--evaluate]
 """
 
 import argparse
@@ -37,6 +37,7 @@ from vic.quality.checks import (
 )
 from vic.ranking.score import rank_impulses
 from vic.reco.baseline import SegmentPopularity
+from vic.reco.evaluate import run as run_evaluation
 from vic.reco.interactions import build_interactions
 from vic.reco.item_cf import ItemItemCF
 from vic.reco.svd import SVDRecommender
@@ -49,6 +50,10 @@ DEFAULT_MODEL = SegmentPopularity.name
 # The daily list excludes known products, so "new" is the matching evaluation.
 MODEL_SELECTION_GROUND_TRUTH = "new"
 MODEL_SELECTION_K = 5
+# The run holds the file for a few seconds; the app's short-lived connections
+# release it within milliseconds, so waiting this long is generous.
+PIPELINE_LOCK_TIMEOUT_S = 30.0
+EVALUATION_REPORT = "evaluation.md"
 
 BEST_MODEL_SQL = """
 SELECT model
@@ -212,14 +217,25 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--as-of", type=date.fromisoformat, default=AS_OF_DEFAULT)
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="afterwards evaluate the recommenders (the next run uses the best one)",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
     )
     run_ts = datetime.now(UTC).replace(tzinfo=None)
-    with _step(f"daily run as_of={args.as_of}"), get_connection(args.db) as con:
+    with (
+        _step(f"daily run as_of={args.as_of}"),
+        get_connection(args.db, lock_timeout_s=PIPELINE_LOCK_TIMEOUT_S) as con,
+    ):
         run_daily(con, args.as_of, run_ts, seed=args.seed)
+        if args.evaluate:
+            with _step("recommender evaluation"):
+                run_evaluation(con, run_ts, args.db.parent / EVALUATION_REPORT)
 
 
 if __name__ == "__main__":

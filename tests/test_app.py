@@ -35,6 +35,12 @@ def test_app_registers_all_pages():
     assert dash_app.title == "Vertriebsimpuls-Cockpit"
 
 
+def test_health_endpoint_answers_without_database():
+    response = dash_app.server.test_client().get("/healthz")
+    assert response.status_code == 200
+    assert response.get_json() == {"status": "ok"}
+
+
 def test_shell_has_footer_and_navigation():
     shell = render(dash_app.layout)
     assert FOOTER_TEXT in shell

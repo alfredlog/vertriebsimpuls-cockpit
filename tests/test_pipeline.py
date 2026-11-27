@@ -145,3 +145,20 @@ def test_no_impulse_is_unsuitable(con):
             assert floating or asset_class != "rates_derivative"
         else:
             assert risk <= MAX_RISK_LEVEL[profile]
+
+
+def test_cli_evaluates_only_on_request(monkeypatch, tmp_path):
+    db_path = tmp_path / "vic.duckdb"
+    reports = []
+    monkeypatch.setattr(daily_run, "run_daily", lambda con, as_of, run_ts, seed: None)
+    monkeypatch.setattr(
+        daily_run,
+        "run_evaluation",
+        lambda con, run_ts, report_path: reports.append(report_path),
+    )
+
+    daily_run.main(["--db", str(db_path)])
+    assert reports == []
+
+    daily_run.main(["--db", str(db_path), "--evaluate"])
+    assert reports == [tmp_path / daily_run.EVALUATION_REPORT]

@@ -1,0 +1,32 @@
+# Production on the VPS: Caddy on the host terminates TLS and proxies to
+# 127.0.0.1:8050. See docs/deployment.md.
+name: vertriebsimpuls-cockpit
+
+x-cockpit: &cockpit
+  build: .
+  image: vertriebsimpuls-cockpit:latest
+  environment:
+    VIC_DB_PATH: /data/vic.duckdb
+  volumes:
+    - vic-data:/data
+
+services:
+  app:
+    <<: *cockpit
+    ports:
+      # Loopback only: the app is never reachable from outside without Caddy.
+      - "127.0.0.1:8050:8050"
+    restart: unless-stopped
+
+  # Nightly job (cron): docker compose --profile jobs run --rm pipeline
+  # Shares the volume with the app. Both only hold the DuckDB file while they
+  # use it and wait for the other's lock (app 15 s, pipeline 30 s).
+  pipeline:
+    <<: *cockpit
+    profiles: ["jobs"]
+    entrypoint: ["python", "-m", "vic.pipeline.daily_run"]
+    command: ["--db", "/data/vic.duckdb", "--evaluate"]
+    restart: "no"
+
+volumes:
+  vic-data:

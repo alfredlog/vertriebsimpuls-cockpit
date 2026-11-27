@@ -1,17 +1,20 @@
 """Data access for the Dash app; every query goes through vic.db helpers.
 
-Dash serves requests from several threads, but a DuckDB connection must not be
-used concurrently. One shared connection behind a lock is simple and safe for
-a single-user demo.
-
 Which database is used is decided at call time, never at import time:
 an explicit connection from set_connection() wins (tests: in-memory states),
-otherwise the file at $VIC_DB_PATH (default data/vic.duckdb). File connections
-are cached per path; reset_connection() drops the override and closes them.
+otherwise the file at $VIC_DB_PATH (default data/vic.duckdb).
+
+File connections are short-lived: opened per query and closed right after.
+DuckDB allows only one process per file, so a connection kept open would lock
+the nightly pipeline (another container) out. Reopening costs ~15 ms. Inside
+the app process the lock serialises the gunicorn threads, because DuckDB also
+refuses a second attach of the same file within one process.
 """
 
 import os
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 
@@ -21,10 +24,12 @@ import pandas as pd
 from vic.db import DEFAULT_DB_PATH, get_connection, query_df, record_feedback
 
 DB_PATH_ENV = "VIC_DB_PATH"
+# Longer than a pipeline run (~3 s): a request during the nightly run waits
+# instead of failing.
+LOCK_TIMEOUT_S = 15.0
 
 _lock = threading.Lock()
 _override: duckdb.DuckDBPyConnection | None = None
-_file_connections: dict[Path, duckdb.DuckDBPyConnection] = {}
 
 
 def db_path() -> Path:
@@ -40,34 +45,27 @@ def set_connection(con: duckdb.DuckDBPyConnection | None) -> None:
 
 
 def reset_connection() -> None:
-    """Drop the override and close every cached file connection."""
-    global _override
+    """Drop the override; the next query opens the file again."""
+    set_connection(None)
+
+
+@contextmanager
+def _connection() -> Iterator[duckdb.DuckDBPyConnection]:
+    """Yield the override, or a file connection that is closed afterwards."""
     with _lock:
-        _override = None
-        for con in _file_connections.values():
+        if _override is not None:
+            yield _override
+            return
+        con = get_connection(db_path(), lock_timeout_s=LOCK_TIMEOUT_S)
+        try:
+            yield con
+        finally:
             con.close()
-        _file_connections.clear()
-
-
-def _con() -> duckdb.DuckDBPyConnection:
-    """Current connection; caller must hold _lock."""
-    if _override is not None:
-        return _override
-    path = db_path().resolve()
-    if path not in _file_connections:
-        _file_connections[path] = get_connection(path)
-    return _file_connections[path]
-
-
-def connection() -> duckdb.DuckDBPyConnection:
-    """Return the connection the app currently uses (tests query through it)."""
-    with _lock:
-        return _con()
 
 
 def _query(sql: str, params: list | dict | None = None) -> pd.DataFrame:
-    with _lock:
-        return query_df(_con(), sql, params)
+    with _connection() as con:
+        return query_df(con, sql, params)
 
 
 def has_tables(*qualified_names: str) -> bool:
@@ -151,8 +149,8 @@ ORDER BY r.name, i.rank
 
 def save_feedback(impulse_id: str, run_date: date, status: str, ts: datetime) -> None:
     """Store a sales rep's decision on one impulse."""
-    with _lock:
-        record_feedback(_con(), impulse_id, run_date, status, ts)
+    with _connection() as con:
+        record_feedback(con, impulse_id, run_date, status, ts)
 
 
 # --- Kunde 360 -------------------------------------------------------------------

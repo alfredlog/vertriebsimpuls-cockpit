@@ -1,5 +1,8 @@
 """The test setup itself: no test may reach the developer's data/vic.duckdb."""
 
+import subprocess
+import sys
+
 import pytest
 
 from app import data as app_data
@@ -38,3 +41,22 @@ def test_connection_is_read_at_call_time(app_db_path, tmp_path, monkeypatch):
 
     monkeypatch.setenv(app_data.DB_PATH_ENV, str(tmp_path / "empty.duckdb"))
     assert not app_data.has_impulses()
+
+
+def test_app_releases_the_file_after_each_query(app_db_path, monkeypatch):
+    """The nightly pipeline runs in another process and needs the file lock."""
+    monkeypatch.setenv(app_data.DB_PATH_ENV, str(app_db_path))
+    assert app_data.has_impulses()
+
+    other_process = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import duckdb, sys; duckdb.connect().execute("
+            '"ATTACH \'" + sys.argv[1] + "\' AS other")',
+            str(app_db_path),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert other_process.returncode == 0, other_process.stderr

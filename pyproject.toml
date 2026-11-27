@@ -11,6 +11,7 @@ dependencies = [
     "certifi>=2026.11.20",
     "dash>=4.5.1",
     "duckdb>=2.0.1",
+    "gunicorn>=27.0.1",
     "numpy>=2.4.6",
     "pandas>=3.1.1",
     "pandera>=0.36.0",
